@@ -326,7 +326,7 @@ function sp_player_statistics_shortcode($atts) {
 
             $output .= '<h3>International Career Totals</h3>';
             foreach ($data['data'] as $key => $stat) {
-                $columnOrder = array('name', 'team', 'appearances', 'wins', 'draws', 'losses', 'goals', 'goalspergame', 'minutespergoal', 'assists', 'minutesplayed', 'started', 'substitutein', 'substituteout', 'onthebench', 'yellowcards', 'redcards', 'owngoals');
+                $columnOrder = array('name', 'team', 'appearances', 'wins', 'draws', 'losses', 'goals', 'goalspergame', 'minutespergoal', 'assists', 'minutesplayed', 'started', 'substitutein', 'substituteout', 'onthebench', 'yellowcards', 'secondyellowcards', 'redcards', 'owngoals');
                 // Check if the player's positions include 'goalkeeper'
                 $isGoalkeeper = false;
                 $gkGoals = 0;
@@ -426,7 +426,7 @@ function sp_player_statistics_shortcode($atts) {
             $dataRows = '';
             $totalRows = '';
 
-            $columnOrder = array('name', 'team', 'appearances', 'wins', 'draws', 'losses', 'goals', 'goalspergame', 'minutespergoal', 'assists', 'minutesplayed', 'started', 'substitutein', 'substituteout', 'onthebench', 'yellowcards', 'redcards', 'owngoals');
+            $columnOrder = array('name', 'team', 'appearances', 'wins', 'draws', 'losses', 'goals', 'goalspergame', 'minutespergoal', 'assists', 'minutesplayed', 'started', 'substitutein', 'substituteout', 'onthebench', 'yellowcards', 'secondyellowcards', 'redcards', 'owngoals');
             $isGoalkeeper = false;
             $gkGoals = 0;
             $gkAssists = 0;
@@ -2511,22 +2511,7 @@ function sp_match_title_shortcode( $atts ) {
     $tournament_url = get_site_url() . '/' . $tournament_slug;
 
     $matchday = $data['Match Day'];
-
-    $ground_terms = wp_get_post_terms($event_id, 'sp_venue');
-    $stadium = '';
-    if (!is_wp_error($ground_terms) && !empty($ground_terms)) {
-        $ground = $ground_terms[0]; // Assuming only one ground term is assigned
-        $ground_hierarchy = array($ground->name);
-
-        while ($ground->parent != 0) {
-            $ground = get_term($ground->parent, 'sp_venue');
-            $ground_hierarchy[] = $ground->name;
-        }
-
-        $ground_name = array_shift($ground_hierarchy);
-        $stadium = $ground_name . ' (' . implode(', ', $ground_hierarchy) . ')';
-    }
-
+    
     $score_aet = '';
     $extra_time = get_field('extra_time');
     if ($extra_time) {
@@ -2558,7 +2543,6 @@ function sp_match_title_shortcode( $atts ) {
     <div class="sp_match_data">
         <h6>{$date}</h6>
         <h5><a href="{$tournament_url}">{$tournament} - {$matchday}</a></h5>
-        <h5>{$stadium}</h5>
     </div>
     <div class="sp_match_title">
         <div class="sp_match_title-team sp_match_title-home">
@@ -2775,37 +2759,6 @@ function sp_match_scorers_shortcode($atts) {
         return $a['time'] - $b['time'];
     });
 
-    $event_specs = get_post_meta($event_id, 'sp_specs', true);
-    $attendance = '';
-    if (isset($event_specs['attendance']) && !empty($event_specs['attendance'])) {
-        $attendance = '<div class="sp-match-attendance"><b>Attendance:</b> ' . $event_specs['attendance'] . '</div>';
-    }
-
-    $event_officials = get_post_meta($event_id, 'sp_officials', true);
-    $officials = '';
-    if (!empty($event_officials)) {
-        // Process referees (ID 12)
-        if (isset($event_officials[12])) {
-            $referees = $event_officials[12];
-            foreach ($referees as $referee_id) {
-                $referee_name = get_the_title($referee_id);
-                $officials .= '<div class="sp-match-referee"><b>Referee:</b> ' . esc_html($referee_name) . '</div>';
-            }
-        }
-
-        // Process assistants (ID 13)
-        if (isset($event_officials[13])) {
-            $assistants = $event_officials[13];
-            $assistant_names = array();
-            foreach ($assistants as $assistant_id) {
-                $assistant_names[] = get_the_title($assistant_id);
-            }
-            if (!empty($assistant_names)) {
-                $officials .= '<div class="sp-match-assistants"><b>Assistants:</b> ' . esc_html(implode(', ', $assistant_names)) . '</div>';
-            }
-        }
-    }
-
     $pk_shots = '';
     $penalty_shootout = get_post_meta( $event_id, 'penalty_shootout', true );
     if ($penalty_shootout) {
@@ -2898,10 +2851,6 @@ function sp_match_scorers_shortcode($atts) {
         $output .= '</div>';
     }
     $output .= $pk_shots;
-    $output .= '<div class="sp-match-aditional">';
-    $output .= $officials;
-    $output .= $attendance;
-    $output .= '</div>';
     $output .= '</div>';
     $output .= '<div class="sp-match-kit sp-match-away-kit">';
     $output .= $team2_kit_image;
@@ -2917,6 +2866,7 @@ add_shortcode('sp_match_scorers', 'sp_match_scorers_shortcode');
 
 
 
+// Function to add a match timeline with a shortcode
 function sp_match_timeline_shortcode($atts) {
     // Extract shortcode attributes
     $atts = shortcode_atts(array(
@@ -2936,6 +2886,12 @@ function sp_match_timeline_shortcode($atts) {
     $performance = $event->performance();
     if (empty($performance)) {
         return 'No performance data available';
+    }
+
+    // Get the timeline data
+    $timeline = get_post_meta($event_id, 'sp_timeline', true);
+    if (empty($timeline)) {
+        return 'No timeline data available';
     }
 
     // Get home and away teams
@@ -3018,6 +2974,52 @@ function sp_match_timeline_shortcode($atts) {
         }
     }
 
+    // Loop through timeline data to add substitution events
+    foreach ($timeline as $team_id => $players) {
+        foreach ($players as $player_id => $events) {
+            if (isset($events['sub']) && is_array($events['sub']) && count($events['sub']) > 0) {
+                foreach ($events['sub'] as $index => $sub_event) {
+                    // Ensure the substitution event has a time
+                    if (!empty($sub_event)) {
+                        // Get the player being substituted out
+                        $player_out_id = $performance[$team_id][$player_id]['sub'] ?? null;
+
+                        if ($player_out_id) {
+                            // Determine the minute of the substitution event
+                            $minute_parts = explode('+', trim($sub_event));
+                            $base_minute = intval($minute_parts[0]);
+                            $extra_time = isset($minute_parts[1]) ? intval($minute_parts[1]) : 0;
+
+                            // Calculate summed minute
+                            $summed_minute = $base_minute + $extra_time;
+                            
+                            // Determine if the event belongs to the first, second half, or extra time
+                            if ($base_minute <= 45) {
+                                $event_array = &$first_half_events;
+                            } elseif ($base_minute <= 90) {
+                                $event_array = &$second_half_events;
+                            } elseif (($extra_time_enabled) && ($base_minute > 90) && ($base_minute <= 105)) {
+                                $event_array = &$extra_time_fh_events;
+                            } elseif (($extra_time_enabled) && ($base_minute > 105) && ($base_minute <= 120)) {
+                                $event_array = &$extra_time_sh_events;
+                            }
+
+                            // Store the substitution event
+                            $event_array[] = array(
+                                'minute' => $summed_minute,
+                                'original_string' => $sub_event, // Store original string
+                                'type' => 'sub',
+                                'player_id' => $player_id, // Player coming in
+                                'player_out_id' => $player_out_id, // Player being substituted out
+                                'team_id' => $team_id,
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     // Sort events by minute for each period
     usort($first_half_events, function ($a, $b) {
         return $a['minute'] - $b['minute'];
@@ -3025,6 +3027,7 @@ function sp_match_timeline_shortcode($atts) {
     usort($second_half_events, function ($a, $b) {
         return $a['minute'] - $b['minute'];
     });
+
 
     if ($extra_time_enabled) {
         usort($extra_time_fh_events, function ($a, $b) {
@@ -3045,11 +3048,11 @@ function sp_match_timeline_shortcode($atts) {
     }
 
     // Calculate the length of the second half
-    $second_time_length = get_post_meta($event_id, 'sp_minutes', true) - 45;
-    if ($extra_time_enabled && !empty($second_half_events)) {
+    $second_time_length = 45;
+    if (!empty($second_half_events)) {
         $last_st_event = end($second_half_events);
         if (($last_st_event['minute'] >= 90)) {
-            $second_time_length = $last_st_event['minute'] + 1;
+            $second_time_length = ($last_st_event['minute'] + 1) - 45;
         } else {
             $second_time_length = 45;
         }
@@ -3114,8 +3117,8 @@ function sp_match_timeline_shortcode($atts) {
             position: relative;
             width: 100%;
             height: 65px;
-            margin-top: 24px;
-            margin-bottom: 24px;
+            margin-top: 36px;
+            margin-bottom: 36px;
             display: flex;
             z-index: 5;
             justify-content: space-between;
@@ -3165,8 +3168,8 @@ function sp_match_timeline_shortcode($atts) {
             display: block;
         }
         .timeline-event img {
-            width: 24px;
-            height: 24px;
+            width: auto;
+            height: 18px;
             cursor: pointer;
         }
         .event-minute {
@@ -3184,7 +3187,7 @@ function sp_match_timeline_shortcode($atts) {
         .event-info {
             display: none;
             position: absolute;
-            top: 30px;
+            top: 65px;
             left: 50%;
             transform: translateX(-50%);
             background: #fff;
@@ -3192,6 +3195,10 @@ function sp_match_timeline_shortcode($atts) {
             padding: 5px;
             font-size: 12px;
             z-index: 5;
+            border-radius: 6px;
+        }
+        .top-show ~ .event-info {
+            top: -48px;
         }
         .event-minute:hover ~ .event-info,
         .top-icon.top-show:hover ~ .event-info,
@@ -3201,7 +3208,7 @@ function sp_match_timeline_shortcode($atts) {
         .sp-match-halftime {
             width: 50px;
             background: #fff;
-            border-radius: 50%;
+            border-radius: 12px;
             border: 1px solid #111;
             color: #111;
             text-align: center;
@@ -3261,11 +3268,19 @@ function render_event($event, $home_team_id, $away_team_id, $time_length, $offse
         case 'yellowcards':
             $event_icon = '<i class="sp-icon-card" style="color:#f4d014 !important"></i>';
             break;
+        case 'secondyellowcards':
+            $image_id = 1397;
+            $image_url = wp_get_attachment_url($image_id);
+            $event_icon = '<img src="' . $image_url . '">';
+            break;
         case 'redcards':
             $event_icon = '<i class="sp-icon-card" style="color:#d4000f !important"></i>';
             break;
         case 'owngoals':
             $event_icon = '<i class="sp-icon-soccerball" style="color:#d4000f !important"></i>';
+            break;
+        case 'sub':
+            $event_icon = '<i class="sp-icon-sub" style="color:dodgerblue !important"></i>';
             break;
         default:
             $event_icon = ''; // Default case, no icon found
@@ -3277,6 +3292,17 @@ function render_event($event, $home_team_id, $away_team_id, $time_length, $offse
     $player_fn = get_post_meta($event['player_id'], 'short_first_name', true);
     if (isset($player_fn) && !empty($player_fn)) {
         $player_name = $player_fn . ' ' . $player_ln;
+    }
+
+    $player_out_name = '';
+    if ($event_type === 'sub') {
+        $player_out_ln = get_post_meta($event['player_out_id'], 'short_last_name', true);
+        $player_out_name = $player_out_ln;
+        $player_out_fn = get_post_meta($event['player_out_id'], 'short_first_name', true);
+        if (isset($player_out_fn) && !empty($player_out_fn)) {
+            $player_out_name = $player_out_fn . ' ' . $player_out_ln;
+        }
+        $player_name = $player_name . ' x ' . $player_out_name;
     }
 
     $output = '<div class="timeline-event" style="left: ' . (($minute - $offset) / $time_length * 100) . '%;">';
@@ -3291,3 +3317,1086 @@ function render_event($event, $home_team_id, $away_team_id, $time_length, $offse
 
 // Register the new shortcode
 add_shortcode('sp_match_timeline', 'sp_match_timeline_shortcode');
+
+
+
+// Function to add match lineups and performance
+function sp_event_lineups_shortcode($atts) {
+    // Extract shortcode attributes
+    $atts = shortcode_atts(array(
+        'id' => 0,
+    ), $atts);
+
+    // Get event ID from shortcode attribute or current post
+    $event_id = !empty($atts['id']) ? intval($atts['id']) : get_the_ID();
+    if (!$event_id) {
+        return 'Event ID is required';
+    }
+
+    // Get event object
+    $event = new SP_Event($event_id);
+
+    // Get the performance data
+    $performance = $event->performance();
+    if (empty($performance)) {
+        return 'No performance data available';
+    }
+
+    // Get managers
+    $managers = get_post_meta($event_id, 'sp_staff', false);
+
+    $home_manager_id = $managers[1];
+    $home_manager_url = get_permalink($home_manager_id);
+    $home_manager_first_name = get_post_meta($home_manager_id, 'short_first_name', true);
+    $home_manager_last_name = get_post_meta($home_manager_id, 'short_last_name', true);
+    if (empty($home_manager_first_name) && empty($home_manager_last_name)) {
+        $home_manager_last_name = get_the_title($home_manager_id);
+        $home_manager_first_name = '';
+    }
+
+    $away_manager_id = $managers[3];
+    $away_manager_url = get_permalink($away_manager_id);
+    $away_manager_first_name = get_post_meta($away_manager_id, 'short_first_name', true);
+    $away_manager_last_name = get_post_meta($away_manager_id, 'short_last_name', true);
+    if (empty($away_manager_first_name) && empty($away_manager_last_name)) {
+        $away_manager_last_name = get_the_title($away_manager_id);
+        $away_manager_first_name = '';
+    }
+
+    // Get colors
+    $teams = get_post_meta($event_id, 'sp_team', false);  
+    $results = get_post_meta($event_id, 'sp_results');
+
+    $home_id = $teams[0];
+    $home_url = get_permalink($home_id);
+    $home_colors = get_post_meta($home_id, 'sp_colors', true);
+    $home_shirt_color = $home_colors['primary'];
+    $home_number_color = $home_colors['text'];
+    $home_replace_color = get_post_meta($event_id, 'home_team_setup_replace_team_color', true);
+    if ($home_replace_color) {
+        $home_shirt_color = get_post_meta($event_id, 'home_team_setup_team_color', true);
+        $home_number_color = get_post_meta($event_id, 'home_team_setup_number_color', true);
+    }
+    $home_gkshirt_color = get_post_meta($event_id, 'home_team_setup_goalkeeper_color', true);
+    $home_gktext_color = get_post_meta($event_id, 'home_team_setup_goalkeeper_number_color', true);
+    $home_score = $results[0][$home_id]['goals'];
+    $home_team_defense_zone = get_post_meta($event_id, 'home_team_setup_defense_zone', true);
+    $home_team_midfield_zone = get_post_meta($event_id, 'home_team_setup_midfield_zone', true);
+    $home_team_midfield_first_zone = null;
+    $home_team_midfield_second_zone = null;
+    $home_team_midfield_variation = null;
+    // Check if the value contains a hyphen
+    if (strpos($home_team_midfield_zone, '-') !== false) {
+        // Split the value into parts
+        list($first_part, $second_part) = explode('-', $home_team_midfield_zone);
+    
+        // Store the first part as an integer
+        $home_team_midfield_first_zone = (int)$first_part;
+    
+        // Check if the second part contains a letter
+        if (preg_match('/(\d+)([a-z]?)/', $second_part, $matches)) {
+            // Store the numeric part as an integer
+            $home_team_midfield_second_zone = (int)$matches[1];
+    
+            // Store the letter part if it exists
+            if (!empty($matches[2])) {
+                $home_team_midfield_variation = $matches[2];
+            }
+        }    
+        // Calculate the sum of both parts
+        $home_team_midfield_zone = $home_team_midfield_first_zone + $home_team_midfield_second_zone;
+    } else {
+        // If it's a single number, store it directly
+        $home_team_midfield_zone = (int)$home_team_midfield_zone;
+    }
+    $home_team_forward_zone = get_post_meta($event_id, 'home_team_setup_forward_zone', true);
+    $home_add_pitch_kit = get_post_meta($event_id, 'home_team_setup_add_pitch_kit', true);
+    $home_pitch_kit = $home_pitch_second_color = $home_pitch_number_color = '';
+    if ($home_add_pitch_kit) {
+        $home_pitch_kit = get_post_meta($event_id, 'home_team_setup_pitch_kit', true);
+        $home_pitch_second_color = get_post_meta($event_id, 'home_team_setup_second_color', true);
+        $home_pitch_number_color = get_post_meta($event_id, 'home_team_setup_pitch_number_color', true);
+    }
+
+    $away_id = $teams[1];
+    $away_url = get_permalink($away_id);
+    $away_colors = get_post_meta($away_id, 'sp_colors', true);
+    $away_shirt_color = $away_colors['primary'];
+    $away_number_color = $away_colors['text'];
+    $away_replace_color = get_post_meta($event_id, 'away_team_setup_replace_team_color', true);
+    if ($away_replace_color) {
+        $away_shirt_color = get_post_meta($event_id, 'away_team_setup_team_color', true);
+        $away_number_color = get_post_meta($event_id, 'away_team_setup_number_color', true);
+    }
+    $away_gkshirt_color = get_post_meta($event_id, 'away_team_setup_goalkeeper_color', true);
+    $away_gktext_color = get_post_meta($event_id, 'away_team_setup_goalkeeper_number_color', true);
+    $away_score = $results[0][$away_id]['goals'];
+    $away_team_defense_zone = get_post_meta($event_id, 'away_team_setup_defense_zone', true);
+    $away_team_midfield_zone = get_post_meta($event_id, 'away_team_setup_midfield_zone', true);
+    $away_team_midfield_first_zone = null;
+    $away_team_midfield_second_zone = null;
+    $away_team_midfield_variation = null;
+    // Check if the value contains a hyphen
+    if (strpos($away_team_midfield_zone, '-') !== false) {
+        // Split the value into parts
+        list($first_part, $second_part) = explode('-', $away_team_midfield_zone);
+    
+        // Store the first part as an integer
+        $away_team_midfield_first_zone = (int)$first_part;
+    
+        // Check if the second part contains a letter
+        if (preg_match('/(\d+)([a-z]?)/', $second_part, $matches)) {
+            // Store the numeric part as an integer
+            $away_team_midfield_second_zone = (int)$matches[1];
+    
+            // Store the letter part if it exists
+            if (!empty($matches[2])) {
+                $away_team_midfield_variation = $matches[2];
+            }
+        }    
+        // Calculate the sum of both parts
+        $away_team_midfield_zone = $away_team_midfield_first_zone + $away_team_midfield_second_zone;
+    } else {
+        // If it's a single number, store it directly
+        $away_team_midfield_zone = (int)$away_team_midfield_zone;
+    }
+    $away_team_forward_zone = get_post_meta($event_id, 'away_team_setup_forward_zone', true);
+    $away_add_pitch_kit = get_post_meta($event_id, 'away_team_setup_add_pitch_kit', true);
+    $away_pitch_kit = $away_pitch_second_color = $away_pitch_number_color = '';
+    if ($away_add_pitch_kit) {
+        $away_pitch_kit = get_post_meta($event_id, 'away_team_setup_pitch_kit', true);
+        $away_pitch_second_color = get_post_meta($event_id, 'away_team_setup_second_color', true);
+        $away_pitch_number_color = get_post_meta($event_id, 'away_team_setup_pitch_number_color', true);
+    }
+
+
+    $ground_terms = wp_get_post_terms($event_id, 'sp_venue');
+    $stadium = '';
+    if (!is_wp_error($ground_terms) && !empty($ground_terms)) {
+        $ground = $ground_terms[0]; // Assuming only one ground term is assigned
+        $ground_hierarchy = array($ground->name);
+
+        while ($ground->parent != 0) {
+            $ground = get_term($ground->parent, 'sp_venue');
+            $ground_hierarchy[] = $ground->name;
+        }
+
+        $ground_name = array_shift($ground_hierarchy);
+        $stadium = $ground_name . ' (' . implode(', ', $ground_hierarchy) . ')';
+    }
+
+    $event_officials = get_post_meta($event_id, 'sp_officials', true);
+    $officials = '';
+    if (!empty($event_officials)) {
+        // Process referees (ID 12)
+        if (isset($event_officials[12])) {
+            $referees = $event_officials[12];
+            foreach ($referees as $referee_id) {
+                $referee_name = get_the_title($referee_id);
+                $officials .= '<div class="sp-match-referee"><b>Referee:</b> ' . esc_html($referee_name) . '</div>';
+            }
+        }
+
+        // Process assistants (ID 13)
+        if (isset($event_officials[13])) {
+            $assistants = $event_officials[13];
+            $assistant_names = array();
+            foreach ($assistants as $assistant_id) {
+                $assistant_names[] = get_the_title($assistant_id);
+            }
+            if (!empty($assistant_names)) {
+                $officials .= '<div class="sp-match-assistants"><b>Assistants:</b> ' . esc_html(implode(', ', $assistant_names)) . '</div>';
+            }
+        }
+    }
+
+    $event_specs = get_post_meta($event_id, 'sp_specs', true);
+    $attendance = '';
+    if (isset($event_specs['attendance']) && !empty($event_specs['attendance'])) {
+        $attendance = '<div class="sp-match-attendance"><b>Attendance:</b> ' . $event_specs['attendance'] . '</div>';
+    }
+
+    // Separate performances for both teams
+    $home_performance = isset($performance[$home_id]) ? $performance[$home_id] : [];
+    $away_performance = isset($performance[$away_id]) ? $performance[$away_id] : [];
+
+    $number_of_home_players = count($home_performance);
+    $number_of_away_players = count($away_performance);
+
+    // Get the timeline data
+    $timeline = get_post_meta($event_id, 'sp_timeline', true);
+    if (empty($timeline)) {
+        return 'No timeline data available';
+    }
+    
+    // Create a substitution map from the timeline
+    $substitution_map = [];
+
+    foreach ($timeline as $team_id => $players) {
+        foreach ($players as $player_id => $events) {
+            if (isset($events['sub']) && is_array($events['sub']) && count($events['sub']) > 0) {
+                foreach ($events['sub'] as $minute) {
+                    if (!empty($minute)) {
+                        $substitution_map[$team_id][$player_id] = $minute;
+                    }
+                }
+            }
+        }
+    }
+
+    $subs_out = array();
+    // Loop through performance data and store relevant data
+    foreach ($performance as $team_id => $players) {
+        foreach ($players as $player_id => $data) {
+            if (is_array($data)) {
+                foreach ($data as $event_type => $event_string) {
+                    // Skip "goalsreceived" events
+                    if ($event_type == 'goalsreceived') {
+                        continue;
+                    }
+
+                    // Ensure event_string is a string before processing
+                    if (is_string($event_string) && !empty($event_string)) {
+                        if ($event_type == 'sub') {
+                            $subs_out[$event_string] = $player_id;
+                        }
+
+                        // Extract occurrences and minutes
+                        if (preg_match_all('/(\d+)\s\(([^)]+)\)/', $event_string, $matches, PREG_SET_ORDER)) {
+                            foreach ($matches as $match) {
+                                $minutes_str = $match[2];
+
+                                // Split minutes by comma and process each
+                                $minutes = explode(',', $minutes_str);
+                                foreach ($minutes as $minute_str) {
+                                    // Parse minute and determine base minute
+                                    $minute_parts = explode('+', trim($minute_str));
+                                    $base_minute = intval($minute_parts[0]);
+                                    $extra_time = isset($minute_parts[1]) ? intval($minute_parts[1]) : 0;
+
+                                    // Calculate summed minute
+                                    $summed_minute = $base_minute + $extra_time;
+                                    $original_string = $base_minute;
+                                    if ($extra_time > 0) {
+                                        $original_string = $base_minute . '+' . $extra_time;
+                                    }
+
+                                    // Determine if the event belongs to the first, second half, or extra time
+                                    if ($base_minute <= 45) {
+                                        $event_array = &$first_half_events;
+                                    } elseif ($base_minute <= 90) {
+                                        $event_array = &$second_half_events;
+                                    } elseif (($extra_time_enabled) && ($base_minute > 90) && ($base_minute <= 105)) {
+                                        $event_array = &$extra_time_fh_events;
+                                    } elseif (($extra_time_enabled) && ($base_minute > 105) && ($base_minute <= 120)) {
+                                        $event_array = &$extra_time_sh_events;
+                                    }
+
+                                    // Store the event
+                                    $event_array[] = array(
+                                        'minute' => $summed_minute,
+                                        'original_string' => $original_string, // Store original string
+                                        'type' => $event_type,
+                                        'player_id' => $player_id,
+                                        'team_id' => $team_id,
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Initialize output
+    $output = '<div class="sp-event-linepus">';
+
+    $output .= '<div class="sp-event-linepus-teams">';
+
+    $output .= '<div class="sp-event-linepus-team-performance home-team-performance">';
+    $output .= '<div class="sp-event-linepus-team-score">';
+    $output .= '<div class="sp-event-linepus-home-team-name"><a href="' . $home_url . '">' . get_the_title($home_id) . '</a></div>';
+    $output .= '<div class="sp-event-linepus-home-team-goals sp-event-lineups-numbers">' . $home_score . '</div>';
+    $output .= '</div>';
+    // Add substitution events to the output
+    $h = 0;
+    foreach ($home_performance as $player_id => $data) {
+        if ($h === 12) {
+            $output .= '<div class="sp-event-linepus-subs">SUBSTITUTES</div>';
+        }
+        if ($player_id != 0) {
+            $number = $data['number'];
+            $position = $data['position'][0];
+            switch ($position) {
+                case 2:
+                    $position = 'GK';
+                    break;
+                case '3':
+                    $position = 'DF';
+                    break;
+                case '4':
+                    $position = 'MF';
+                    break;
+                case '5':
+                    $position = 'FW';
+                    break;
+                default:
+                    $position = ''; // Default case, no position found
+                    break;
+            }
+            $first_name = get_post_meta($player_id, 'short_first_name', true);
+            $last_name = get_post_meta($player_id, 'short_last_name', true);
+            $player_url = get_permalink($player_id);
+
+            // Fallback to the post title if custom fields are empty
+            if (empty($first_name) && empty($last_name)) {
+                $last_name = get_the_title($player_id);
+                $first_name = '';
+            }
+
+            $yellowcards = $data['yellowcards'];
+            preg_match_all('/\(([^)]+)\)/', $yellowcards, $matches);
+            $yellowcards_minutes = !empty($matches[1]) ? $matches[1][0] : '';
+
+            $secondyellowcards = $data['secondyellowcards'];
+            preg_match_all('/\(([^)]+)\)/', $secondyellowcards, $matches);
+            $secondyellowcards_minutes = !empty($matches[1]) ? $matches[1][0] : '';
+
+            $redcards = $data['redcards'];
+            preg_match_all('/\(([^)]+)\)/', $redcards, $matches);
+            $redcards_minutes = !empty($matches[1]) ? $matches[1][0] : '';
+
+            $sub = $data['sub'];
+            $sub_minutes = isset($substitution_map[$home_id][$player_id]) ? $substitution_map[$home_id][$player_id] : '';
+
+            $sub_out_minutes = '';
+            if ( array_key_exists( $player_id, $subs_out ) ) {
+                $player_in = $subs_out[$player_id];
+                $sub_out_minutes = $timeline[$home_id][$player_in]['sub'][0];
+            }
+
+            $output .= '<div class="sp-event-lineups-player player-' . $position . '">';
+            $output .= '<div class="sp-event-lineups-numbers">';
+            $output .= esc_html(!empty($number) ? $number : $position);
+            $output .= '</div>';
+            $output .= '<div class="sp-event-lineups-name">';
+            $output .= '<a href="' . $player_url . '">';
+            $output .= '<div class="sp-event-lineups-first-name">' . esc_html($first_name) . '</div>';
+            $output .= '<div class="sp-event-lineups-last-name">' . esc_html($last_name) . '</div>';
+            $output .= '</a>';
+            $output .= '</div>';
+            $output .= '<div class="sp-event-lineups-performance">';
+            if (!empty($sub_minutes)) {
+                $output .= '<div class="sp-event-lineups-event">';
+                $output .= '<i class="sp-icon-redo" style="color: green"></i>' . esc_html($sub_minutes);
+                $output .= "'";
+                $output .= '</div>';
+            }
+            if (!empty($yellowcards_minutes)) {
+                $output .= '<div class="sp-event-lineups-event">';
+                $output .= '<i class="sp-icon-card" style="color: #f4d014"></i>' . esc_html($yellowcards_minutes);
+                $output .= '</div>';
+            }
+            if (!empty($secondyellowcards_minutes)) {
+                $image_id = 1397;
+                $image_url = wp_get_attachment_url($image_id);
+                $output .= '<div class="sp-event-lineups-event">';
+                $output .= '<img src="' . $image_url . '" height="18" width="auto">' . esc_html($secondyellowcards_minutes);
+                $output .= '</div>';
+            }
+            if (!empty($redcards_minutes)) {
+                $output .= '<div class="sp-event-lineups-event">';
+                $output .= '<i class="sp-icon-card" style="color: #f4d014"></i>' . esc_html($redcards_minutes);
+                $output .= '</div>';
+            }
+            if (!empty($sub_out_minutes)) {
+                $output .= '<div class="sp-event-lineups-event">';
+                $output .= '<i class="sp-icon-undo" style="color: red"></i>' . esc_html($sub_out_minutes);
+                $output .= "'";
+                $output .= '</div>';
+            }
+            $output .= '</div>';
+            $output .= '</div>';
+        }
+        $h++;
+    }
+    $output .= '</div>';
+
+    $output .= '<div class="sp-event-lineups-field">';
+    $output .= '<div class="sp-event-lineups-field-bg">';
+
+    if (($number_of_home_players >= 12) && ($number_of_away_players >= 12)) {
+        $output .= '<div class="sp-event-lineups-field-half field-home">';
+        $hf = 0;
+        foreach ($home_performance as $player_id => $data) {
+            if ($player_id != 0) {
+                $number = $data['number'];
+                $position = $data['position'][0];
+                switch ($position) {
+                    case 2:
+                        $position = 'GK';
+                        break;
+                    case '3':
+                        $position = 'DF';
+                        break;
+                    case '4':
+                        $position = 'MF';
+                        break;
+                    case '5':
+                        $position = 'FW';
+                        break;
+                    default:
+                        $position = ''; // Default case, no position found
+                        break;
+                }
+
+                if ($hf === 1) {
+                    $output .= '<div class="sp-event-lineups-field-zone flex-1">';
+                    $output .= '<div class="sp-event-lineups-field-player">';
+                    $output .= '<i class="icon-kit-liso" style="color:' . $home_gkshirt_color . '"></i>';
+                    $output .= '<span style="color:' . $home_gktext_color . '">' . esc_html(!empty($number) ? $number : $position) . '</span>';
+                    $output .= '</div>';
+                    $output .= '</div>';
+                }
+
+                $defense_start = 2;
+                $defense_limit = 1 + $home_team_defense_zone;
+                if ($hf === $defense_start) {
+                    $output .= '<div class="sp-event-lineups-field-zone flex-' . $home_team_defense_zone . '">';
+                }
+                if (($hf >= $defense_start) && ($hf <= $defense_limit)) {
+                    $output .= '<div class="sp-event-lineups-field-player">';
+                    $output .= '<i class="icon-kit-liso" style="color:' . $home_shirt_color . '"></i>';
+                    if ($home_add_pitch_kit) {
+                        $output .= '<i class="second-kit icon-' . $home_pitch_kit . '" style="color:' . $home_pitch_second_color . '"></i>';
+                        $output .= '<i class="second-kit icon-kit-liso-2" style="color:' . $home_shirt_color . '"></i>';
+                        $output .= '<span style="color:' . $home_pitch_number_color . '; background:' . $home_shirt_color . '">' . esc_html(!empty($number) ? $number : $position) . '</span>';
+                    } else {
+                        $output .= '<span style="color:' . $home_number_color . '; background:' . $home_shirt_color . '">' . esc_html(!empty($number) ? $number : $position) . '</span>';
+                    }
+                    $output .= '</div>';
+                }
+                if ($hf === $defense_limit) {
+                    $output .= '</div>';
+                }
+
+                $midfield_start = $defense_limit + 1;
+                $midfield_limit = $defense_limit + $home_team_midfield_zone;
+                if ($home_team_midfield_first_zone && $home_team_midfield_second_zone) {
+                    $midfield_first_start = $midfield_start;
+                    $midfield_first_limit = $defense_limit + $home_team_midfield_first_zone;
+                    if ($hf === $midfield_first_start) {
+                        $output .= '<div class="sp-event-lineups-field-zone flex-' . $home_team_midfield_first_zone . '">';
+                    }
+                    if (($hf >= $midfield_first_start) && ($hf <= $midfield_first_limit)) {
+                        $output .= '<div class="sp-event-lineups-field-player">';
+                        $output .= '<i class="icon-kit-liso" style="color:' . $home_shirt_color . '"></i>';
+                        if ($home_add_pitch_kit) {
+                            $output .= '<i class="second-kit icon-' . $home_pitch_kit . '" style="color:' . $home_pitch_second_color . '"></i>';
+                            $output .= '<i class="second-kit icon-kit-liso-2" style="color:' . $home_shirt_color . '"></i>';
+                            $output .= '<span style="color:' . $home_pitch_number_color . '; background:' . $home_shirt_color . '">' . esc_html(!empty($number) ? $number : $position) . '</span>';
+                        } else {
+                            $output .= '<span style="color:' . $home_number_color . '; background:' . $home_shirt_color . '">' . esc_html(!empty($number) ? $number : $position) . '</span>';
+                        }
+                        $output .= '</div>';
+                    }
+                    if ($hf === $midfield_first_limit) {
+                        $output .= '</div>';
+                    }
+
+                    $midfield_second_start = $midfield_first_limit + 1;
+                    $midfield_second_limit = $midfield_limit;
+                    $mf_variation = '';
+                    if ($home_team_midfield_variation) {
+                        $mf_variation = 'variation-' . $home_team_midfield_variation;
+                    }
+                    if ($hf === $midfield_second_start) {
+                        $output .= '<div class="sp-event-lineups-field-zone flex-' . $home_team_midfield_second_zone . ' ' . $mf_variation . '">';
+                    }
+                    if (($hf >= $midfield_second_start) && ($hf <= $midfield_second_limit)) {
+                        $output .= '<div class="sp-event-lineups-field-player">';
+                        $output .= '<i class="icon-kit-liso" style="color:' . $home_shirt_color . '"></i>';
+                        if ($home_add_pitch_kit) {
+                            $output .= '<i class="second-kit icon-' . $home_pitch_kit . '" style="color:' . $home_pitch_second_color . '"></i>';
+                            $output .= '<i class="second-kit icon-kit-liso-2" style="color:' . $home_shirt_color . '"></i>';
+                            $output .= '<span style="color:' . $home_pitch_number_color . '; background:' . $home_shirt_color . '">' . esc_html(!empty($number) ? $number : $position) . '</span>';
+                        } else {
+                            $output .= '<span style="color:' . $home_number_color . '; background:' . $home_shirt_color . '">' . esc_html(!empty($number) ? $number : $position) . '</span>';
+                        }
+                        $output .= '</div>';
+                    }
+                    if ($hf === $midfield_second_limit) {
+                        $output .= '</div>';
+                    }
+                } else {
+                    if ($hf === $midfield_start) {
+                        $output .= '<div class="sp-event-lineups-field-zone player-double-height flex-' . $home_team_midfield_zone . '">';
+                    }
+                    if (($hf >= $midfield_start) && ($hf <= $midfield_limit)) {
+                        $output .= '<div class="sp-event-lineups-field-player">';
+                        $output .= '<i class="icon-kit-liso" style="color:' . $home_shirt_color . '"></i>';
+                        if ($home_add_pitch_kit) {
+                            $output .= '<i class="second-kit icon-' . $home_pitch_kit . '" style="color:' . $home_pitch_second_color . '"></i>';
+                            $output .= '<i class="second-kit icon-kit-liso-2" style="color:' . $home_shirt_color . '"></i>';
+                            $output .= '<span style="color:' . $home_pitch_number_color . '; background:' . $home_shirt_color . '">' . esc_html(!empty($number) ? $number : $position) . '</span>';
+                        } else {
+                            $output .= '<span style="color:' . $home_number_color . '; background:' . $home_shirt_color . '">' . esc_html(!empty($number) ? $number : $position) . '</span>';
+                        }
+                        $output .= '</div>';
+                    }
+                    if ($hf === $midfield_limit) {
+                        $output .= '</div>';
+                    }
+                }
+
+                $forward_start = $midfield_limit + 1;
+                $forward_limit = 11;
+                if ($hf === $forward_start) {
+                    $output .= '<div class="sp-event-lineups-field-zone flex-' . $home_team_forward_zone . '">';
+                }
+                if (($hf >= $forward_start) && ($hf <= $forward_limit)) {
+                    $output .= '<div class="sp-event-lineups-field-player">';
+                    $output .= '<i class="icon-kit-liso" style="color:' . $home_shirt_color . '"></i>';
+                    if ($home_add_pitch_kit) {
+                        $output .= '<i class="second-kit icon-' . $home_pitch_kit . '" style="color:' . $home_pitch_second_color . '"></i>';
+                        $output .= '<i class="second-kit icon-kit-liso-2" style="color:' . $home_shirt_color . '"></i>';
+                        $output .= '<span style="color:' . $home_pitch_number_color . '; background:' . $home_shirt_color . '">' . esc_html(!empty($number) ? $number : $position) . '</span>';
+                    } else {
+                        $output .= '<span style="color:' . $home_number_color . '; background:' . $home_shirt_color . '">' . esc_html(!empty($number) ? $number : $position) . '</span>';
+                    }
+                    $output .= '</div>';
+                }
+                if ($hf === $forward_limit) {
+                    $output .= '</div>';
+                }
+            }
+            $hf++;
+        }
+        $output .= '</div>';
+
+        $output .= '<div class="sp-event-lineups-field-half field-away">';
+        $af = 0;
+        foreach ($away_performance as $player_id => $data) {
+            if ($player_id != 0) {
+                $number = $data['number'];
+                $position = $data['position'][0];
+                switch ($position) {
+                    case 2:
+                        $position = 'GK';
+                        break;
+                    case '3':
+                        $position = 'DF';
+                        break;
+                    case '4':
+                        $position = 'MF';
+                        break;
+                    case '5':
+                        $position = 'FW';
+                        break;
+                    default:
+                        $position = ''; // Default case, no position found
+                        break;
+                }
+
+                if ($af === 1) {
+                    $output .= '<div class="sp-event-lineups-field-zone flex-1">';
+                    $output .= '<div class="sp-event-lineups-field-player">';
+                    $output .= '<i class="icon-kit-liso" style="color:' . $away_gkshirt_color . '"></i>';
+                    $output .= '<span style="color:' . $away_gktext_color . '">' . esc_html(!empty($number) ? $number : $position) . '</span>';
+                    $output .= '</div>';
+                    $output .= '</div>';
+                }
+
+                $defense_start = 2;
+                $defense_limit = 1 + $away_team_defense_zone;
+                if ($af === $defense_start) {
+                    $output .= '<div class="sp-event-lineups-field-zone flex-' . $away_team_defense_zone . '">';
+                }
+                if (($af >= $defense_start) && ($af <= $defense_limit)) {
+                    $output .= '<div class="sp-event-lineups-field-player">';
+                    $output .= '<i class="icon-kit-liso" style="color:' . $away_shirt_color . '"></i>';
+                    if ($away_add_pitch_kit) {
+                        $output .= '<i class="second-kit icon-' . $away_pitch_kit . '" style="color:' . $away_pitch_second_color . '"></i>';
+                        $output .= '<i class="second-kit icon-kit-liso-2" style="color:' . $away_shirt_color . '"></i>';
+                        $output .= '<span style="color:' . $away_pitch_number_color . '; background:' . $away_shirt_color . '">' . esc_html(!empty($number) ? $number : $position) . '</span>';
+                    } else {
+                        $output .= '<span style="color:' . $away_number_color . '; background:' . $away_shirt_color . '">' . esc_html(!empty($number) ? $number : $position) . '</span>';
+                    }
+                    $output .= '</div>';
+                }
+                if ($af === $defense_limit) {
+                    $output .= '</div>';
+                }
+
+                $midfield_start = $defense_limit + 1;
+                $midfield_limit = $defense_limit + $away_team_midfield_zone;
+                if ($away_team_midfield_first_zone && $away_team_midfield_second_zone) {
+                    $midfield_first_start = $midfield_start;
+                    $midfield_first_limit = $defense_limit + $away_team_midfield_first_zone;
+                    if ($af === $midfield_first_start) {
+                        $output .= '<div class="sp-event-lineups-field-zone flex-' . $away_team_midfield_first_zone . '">';
+                    }
+                    if (($af >= $midfield_first_start) && ($af <= $midfield_first_limit)) {
+                        $output .= '<div class="sp-event-lineups-field-player">';
+                        $output .= '<i class="icon-kit-liso" style="color:' . $away_shirt_color . '"></i>';
+                        if ($away_add_pitch_kit) {
+                            $output .= '<i class="second-kit icon-' . $away_pitch_kit . '" style="color:' . $away_pitch_second_color . '"></i>';
+                            $output .= '<i class="second-kit icon-kit-liso-2" style="color:' . $away_shirt_color . '"></i>';
+                            $output .= '<span style="color:' . $away_pitch_number_color . '; background:' . $away_shirt_color . '">' . esc_html(!empty($number) ? $number : $position) . '</span>';
+                        } else {
+                            $output .= '<span style="color:' . $away_number_color . '; background:' . $away_shirt_color . '">' . esc_html(!empty($number) ? $number : $position) . '</span>';
+                        }
+                        $output .= '</div>';
+                    }
+                    if ($af === $midfield_first_limit) {
+                        $output .= '</div>';
+                    }
+
+                    $midfield_second_start = $midfield_first_limit + 1;
+                    $midfield_second_limit = $midfield_limit;
+                    $mf_variation = '';
+                    if ($away_team_midfield_variation) {
+                        $mf_variation = 'variation-' . $away_team_midfield_variation;
+                    }
+                    if ($af === $midfield_second_start) {
+                        $output .= '<div class="sp-event-lineups-field-zone flex-' . $away_team_midfield_second_zone . ' ' . $mf_variation . '">';
+                    }
+                    if (($af >= $midfield_second_start) && ($af <= $midfield_second_limit)) {
+                        $output .= '<div class="sp-event-lineups-field-player">';
+                        $output .= '<i class="icon-kit-liso" style="color:' . $away_shirt_color . '"></i>';
+                        if ($away_add_pitch_kit) {
+                            $output .= '<i class="second-kit icon-' . $away_pitch_kit . '" style="color:' . $away_pitch_second_color . '"></i>';
+                            $output .= '<i class="second-kit icon-kit-liso-2" style="color:' . $away_shirt_color . '"></i>';
+                            $output .= '<span style="color:' . $away_pitch_number_color . '; background:' . $away_shirt_color . '">' . esc_html(!empty($number) ? $number : $position) . '</span>';
+                        } else {
+                            $output .= '<span style="color:' . $away_number_color . '; background:' . $away_shirt_color . '">' . esc_html(!empty($number) ? $number : $position) . '</span>';
+                        }
+                        $output .= '</div>';
+                    }
+                    if ($af === $midfield_second_limit) {
+                        $output .= '</div>';
+                    }
+                } else {
+                    if ($af === $midfield_start) {
+                        $output .= '<div class="sp-event-lineups-field-zone player-double-height flex-' . $away_team_midfield_zone . '">';
+                    }
+                    if (($af >= $midfield_start) && ($af <= $midfield_limit)) {
+                        $output .= '<div class="sp-event-lineups-field-player">';
+                        $output .= '<i class="icon-kit-liso" style="color:' . $away_shirt_color . '"></i>';
+                        if ($away_add_pitch_kit) {
+                            $output .= '<i class="second-kit icon-' . $away_pitch_kit . '" style="color:' . $away_pitch_second_color . '"></i>';
+                            $output .= '<i class="second-kit icon-kit-liso-2" style="color:' . $away_shirt_color . '"></i>';
+                            $output .= '<span style="color:' . $away_pitch_number_color . '; background:' . $away_shirt_color . '">' . esc_html(!empty($number) ? $number : $position) . '</span>';
+                        } else {
+                            $output .= '<span style="color:' . $away_number_color . '; background:' . $away_shirt_color . '">' . esc_html(!empty($number) ? $number : $position) . '</span>';
+                        }
+                        $output .= '</div>';
+                    }
+                    if ($af === $midfield_limit) {
+                        $output .= '</div>';
+                    }
+                }
+
+                $forward_start = $midfield_limit + 1;
+                $forward_limit = 11;
+                if ($af === $forward_start) {
+                    $output .= '<div class="sp-event-lineups-field-zone flex-' . $away_team_forward_zone . '">';
+                }
+                if (($af >= $forward_start) && ($af <= $forward_limit)) {
+                    $output .= '<div class="sp-event-lineups-field-player">';
+                    $output .= '<i class="icon-kit-liso" style="color:' . $away_shirt_color . '"></i>';
+                    if ($away_add_pitch_kit) {
+                        $output .= '<i class="second-kit icon-' . $away_pitch_kit . '" style="color:' . $away_pitch_second_color . '"></i>';
+                        $output .= '<i class="second-kit icon-kit-liso-2" style="color:' . $away_shirt_color . '"></i>';
+                        $output .= '<span style="color:' . $away_pitch_number_color . '; background:' . $away_shirt_color . '">' . esc_html(!empty($number) ? $number : $position) . '</span>';
+                    } else {
+                        $output .= '<span style="color:' . $away_number_color . '; background:' . $away_shirt_color . '">' . esc_html(!empty($number) ? $number : $position) . '</span>';
+                    }
+                    $output .= '</div>';
+                }
+                if ($af === $forward_limit) {
+                    $output .= '</div>';
+                }
+            }
+            $af++;
+        }
+        $output .= '</div>';
+    }
+
+    $output .= '</div>';
+
+    $output .= '<div class="sp-event-lineups-info">';
+    $output .= $stadium . '<br>' . $officials . $attendance;
+    $output .= '</div>';
+    
+    $output .= '</div>';
+
+    $output .= '<div class="sp-event-linepus-team-performance away-team-performance">';
+    $output .= '<div class="sp-event-linepus-team-score">';
+    $output .= '<div class="sp-event-linepus-away-team-goals sp-event-lineups-numbers">' . $away_score . '</div>';
+    $output .= '<div class="sp-event-linepus-away-team-name"><a href="' . $away_url . '">' . get_the_title($away_id) . '</a></div>';
+    $output .= '</div>';
+    // Add substitution events to the output
+    $a = 0;
+    foreach ($away_performance as $player_id => $data) {
+        if ($a === 12) {
+            $output .= '<div class="sp-event-linepus-subs">SUBSTITUTES</div>';
+        }
+        if ($player_id != 0) {
+            $number = $data['number'];
+            $position = $data['position'][0];
+            switch ($position) {
+                case 2:
+                    $position = 'GK';
+                    break;
+                case '3':
+                    $position = 'DF';
+                    break;
+                case '4':
+                    $position = 'MF';
+                    break;
+                case '5':
+                    $position = 'FW';
+                    break;
+                default:
+                    $position = ''; // Default case, no position found
+                    break;
+            }
+            $first_name = get_post_meta($player_id, 'short_first_name', true);
+            $last_name = get_post_meta($player_id, 'short_last_name', true);
+            $player_url = get_permalink($player_id);
+
+            // Fallback to the post title if custom fields are empty
+            if (empty($first_name) && empty($last_name)) {
+                $last_name = get_the_title($player_id);
+                $first_name = '';
+            }
+
+            $yellowcards = $data['yellowcards'];
+            preg_match_all('/\(([^)]+)\)/', $yellowcards, $matches);
+            $yellowcards_minutes = !empty($matches[1]) ? $matches[1][0] : '';
+
+            $secondyellowcards = $data['secondyellowcards'];
+            preg_match_all('/\(([^)]+)\)/', $secondyellowcards, $matches);
+            $secondyellowcards_minutes = !empty($matches[1]) ? $matches[1][0] : '';
+
+            $redcards = $data['redcards'];
+            preg_match_all('/\(([^)]+)\)/', $redcards, $matches);
+            $redcards_minutes = !empty($matches[1]) ? $matches[1][0] : '';
+
+            $sub = $data['sub'];
+            $sub_minutes = isset($substitution_map[$away_id][$player_id]) ? $substitution_map[$away_id][$player_id] : '';
+
+            $sub_out_minutes = '';
+            if ( array_key_exists( $player_id, $subs_out ) ) {
+                $player_in = $subs_out[$player_id];
+                $sub_out_minutes = $timeline[$away_id][$player_in]['sub'][0];
+            }
+
+            $output .= '<div class="sp-event-lineups-player player-' . $position . '">';    
+            $output .= '<div class="sp-event-lineups-performance">';
+            if (!empty($sub_minutes)) {
+                $output .= '<div class="sp-event-lineups-event">';
+                $output .= '<i class="sp-icon-undo" style="color: green"></i>' . esc_html($sub_minutes);
+                $output .= "'";
+                $output .= '</div>';
+            }
+            if (!empty($yellowcards_minutes)) {
+                $output .= '<div class="sp-event-lineups-event">';
+                $output .= '<i class="sp-icon-card" style="color: #f4d014"></i>' . esc_html($yellowcards_minutes);
+                $output .= '</div>';
+            }
+            if (!empty($secondyellowcards_minutes)) {
+                $image_id = 1397;
+                $image_url = wp_get_attachment_url($image_id);
+                $output .= '<div class="sp-event-lineups-event">';
+                $output .= '<img src="' . $image_url . '" height="18" width="auto">' . esc_html($secondyellowcards_minutes);
+                $output .= '</div>';
+            }
+            if (!empty($redcards_minutes)) {
+                $output .= '<div class="sp-event-lineups-event">';
+                $output .= '<i class="sp-icon-card" style="color: #f4d014"></i>' . esc_html($redcards_minutes);
+                $output .= '</div>';
+            }
+            if (!empty($sub_out_minutes)) {
+                $output .= '<div class="sp-event-lineups-event">';
+                $output .= '<i class="sp-icon-redo" style="color: red"></i>' . esc_html($sub_out_minutes);
+                $output .= "'";
+                $output .= '</div>';
+            }
+            $output .= '</div>';
+            $output .= '<div class="sp-event-lineups-name">';
+            $output .= '<a href="' . $player_url . '">';
+            $output .= '<div class="sp-event-lineups-first-name">' . esc_html($first_name) . '</div>';
+            $output .= '<div class="sp-event-lineups-last-name">' . esc_html($last_name) . '</div>';
+            $output .= '</a>';
+            $output .= '</div>';
+            $output .= '<div class="sp-event-lineups-numbers">';
+            $output .= esc_html(!empty($number) ? $number : $position);
+            $output .= '</div>';
+            $output .= '</div>';
+        }
+        $a++;
+    }
+    $output .= '</div>';
+
+    $output .= '</div>';
+
+
+    $output .= <<<HTML
+    <div class="sp-event-lineups-managers">
+        <div class="sp-event-lineups-manager sp-event-lineups-home-manager">
+            <div class="sp-event-lineups-numbers">M</div>
+            <div class="sp-event-lineups-name">
+                <a href="{$home_manager_url}">
+                    <div class="sp-event-lineups-first-name">{$home_manager_first_name}</div>
+                    <div class="sp-event-lineups-last-name">{$home_manager_last_name}</div>
+                </a>
+            </div>
+        </div>
+        <div class="sp-event-lineups-manager sp-event-lineups-manager-title">
+            managers
+        </div>
+        <div class="sp-event-lineups-manager sp-event-lineups-away-manager">
+            <div class="sp-event-lineups-name">
+                <a href="{$away_manager_url}">
+                    <div class="sp-event-lineups-first-name">{$away_manager_first_name}</div>
+                    <div class="sp-event-lineups-last-name">{$away_manager_last_name}</div>
+                </a>
+            </div>
+            <div class="sp-event-lineups-numbers">M</div>
+        </div>
+    </div>
+    HTML;
+
+    $output .= '</div>';
+
+    $field = plugins_url('images/field.png', __FILE__);
+
+    // Include necessary CSS for styling
+    $output .= '<style>
+        .sp-event-linepus {
+            border: 1px solid #ccc;
+            background: #F7F7F7;
+            font-family: "Arial Rounded", sans-serif;
+            margin-top: 48px;
+        }
+        .sp-event-linepus a {
+            color: var( --e-global-color-text );
+        }
+        .sp-event-linepus a:hover {
+            color: #111;
+        }
+        .team-performance {
+            margin-bottom: 20px;
+        }
+        .player-performance {
+            margin-bottom: 10px;
+        }
+        .player-name {
+            font-weight: bold;
+        }
+        .player-stats {
+            list-style: none;
+            padding: 0;
+        }
+        .event-type {
+            margin-left: 10px;
+        }
+        .sp-event-linepus-teams {
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+        }
+        .sp-event-linepus-team-performance {
+            width: 30%;
+        }
+        .sp-event-linepus-team-score,
+        .sp-event-lineups-player {
+            display: flex;
+            border-bottom: 1px solid #ccc;
+        }
+        .sp-event-linepus-home-team-name,
+        .sp-event-linepus-away-team-name {
+            width: calc(100% - 42px);
+            text-align: center;
+            text-transform: uppercase;
+            font-size: 20px;
+            line-height: 40px;
+        }
+        .sp-event-lineups-player:last-child {
+            border-bottom: none;
+        }
+        .home-team-performance .sp-event-lineups-player {
+            padding-right: 3px;
+        }
+        .away-team-performance .sp-event-lineups-player {
+            justify-content: flex-end;
+            padding-left: 3px;
+        }
+        .sp-event-lineups-numbers {
+            width: 42px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 20px;
+            padding: 3px;
+        }
+        .sp-event-lineups-name {
+            padding: 6px;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-end;
+            width: min-content;
+        }
+        .away-team-performance .sp-event-lineups-name {
+            text-align: right;
+        }
+        .sp-event-lineups-first-name {
+            font-size: 16px;
+            line-height: 18px;
+        }
+        .sp-event-lineups-last-name {
+            font-size: 20px;
+            line-height: 22px;
+        }
+        .sp-event-lineups-performance {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            font-size: 10px;
+            margin-left: auto;
+            font-family: Lato, sans-serif;
+            gap: 3px;
+        }
+        .away-team-performance .sp-event-lineups-performance {
+            margin-left: 0;
+            margin-right: auto;
+        }
+        .sp-event-lineups-event {
+            display: flex;
+            align-items: center;
+        }
+        .sp-event-lineups-event img {
+            height: 16px;
+            width: auto;
+            margin-right: 2px;
+        }
+        .sp-event-linepus-subs {
+            text-align: center;
+            line-height: 40px;
+        }
+        .sp-event-lineups-field {
+            width: 40%;
+            text-align: center;
+        }
+        .sp-event-lineups-field-bg {
+            background-image: url(' . $field . ');
+            width: 100%;
+            height: 570px;
+            background-size: 100% 570px;
+            background-repeat: no-repeat;
+        }
+        .sp-event-lineups-field-half {
+            height: 50%;
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+        }
+        .sp-event-lineups-field-half.field-away {
+            flex-direction: column-reverse;
+        }
+        .sp-event-lineups-field-zone {
+            width: 100%;
+            height: 57px;
+            display: flex;
+            justify-content: space-evenly;
+            align-items: center;
+        }
+        .sp-event-lineups-field-half.field-away .sp-event-lineups-field-zone {
+            flex-direction: row-reverse;
+        }
+        .sp-event-lineups-field-zone.flex-2.variation-b {
+            justify-content: space-between;
+            padding: 0 7%;
+        }
+        .sp-event-lineups-field-player {
+            height: 57px;
+            width: 45px;
+            position: relative;
+        }
+        .sp-event-lineups-field-zone.player-double-height {
+            height: 114px;
+        }
+        .sp-event-lineups-field-player i {
+            font-size: 45px;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: iconos;
+        }
+        .sp-event-lineups-field-player i.second-kit {
+            z-index: 2;
+        }
+        .sp-event-lineups-field-player span {
+            font-size: 13px;
+            line-height: 50px;
+            position: relative;
+            z-index: 3;
+            border-radius: 3px;
+        }
+        .sp-event-lineups-managers {
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            border-top: 2px solid #ccc;
+        }
+        .sp-event-lineups-manager {
+            max-width: 50%;
+            display: flex;
+        }
+        .sp-event-lineups-manager.sp-event-lineups-away-manager {
+            justify-content: flex-end;
+        }
+        .sp-event-lineups-manager-title {
+            display: flex;
+            align-items: center;
+            text-transform: uppercase;
+        }
+        .sp-event-lineups-away-player .sp-event-lineups-name,
+        .sp-event-lineups-away-manager .sp-event-lineups-name {
+            text-align: right;
+        }
+        .home-team-performance .sp-event-lineups-numbers,
+        .sp-event-lineups-home-manager .sp-event-lineups-numbers {
+            background-color: ' . $home_shirt_color .';
+            color: ' . $home_number_color .';
+        }
+        .away-team-performance .sp-event-lineups-numbers,
+        .sp-event-lineups-away-manager .sp-event-lineups-numbers {
+            background-color: ' . $away_shirt_color .';
+            color: ' . $away_number_color .';
+        }
+        .home-team-performance .player-GK .sp-event-lineups-numbers {
+            background-color: ' . $home_gkshirt_color .';
+            color: ' . $home_gktext_color .';
+        }
+        .away-team-performance .player-GK .sp-event-lineups-numbers {
+            background-color: ' . $away_gkshirt_color .';
+            color: ' . $away_gktext_color .';
+        }
+        .sp-event-lineups-info {
+            margin: 12px 0;
+        }
+    </style>';
+
+    return $output;
+}
+
+// Register the new shortcode
+add_shortcode('sp_event_lineups', 'sp_event_lineups_shortcode');
